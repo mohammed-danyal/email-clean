@@ -4,10 +4,6 @@ const admin = require('firebase-admin');
 const csv = require('csv-parser');
 const { format } = require('@fast-csv/format');
 const emailValidator = require('email-validator');
-// If you are using 'deep-email-validator' or custom logic, keep that import here
-// For this MVP, we likely used simple regex or a library. 
-// I will assume simple validation for the base code, but if you installed 
-// specific libraries for the check, ensure they are imported.
 
 // --- FIREBASE SETUP (Cloud & Local Compatible) ---
 let serviceAccount;
@@ -28,7 +24,10 @@ else {
     serviceAccount = require(serviceAccountPath);
     console.log("👷 Worker: Loaded Firebase key from local file");
   } catch (err) {
-    console.error("❌ Worker: Could not find service-key.json OR env var.");
+    // Only log error if env var is also missing, otherwise it might just be prod mode
+    if (!process.env.FIREBASE_SERVICE_KEY) {
+        console.error("❌ Worker: Could not find service-key.json OR env var.");
+    }
   }
 }
 
@@ -49,19 +48,19 @@ const db = admin.firestore();
 async function processCsvJob(jobId, filePath) {
   console.log(`Starting job: ${jobId}`);
 
-  const results = [];
   let validCount = 0;
   let invalidCount = 0;
-  let riskyCount = 0;
+  // We don't use "Risky" anymore for this cloud version
+  const riskyCount = 0; 
 
   // 1. Setup Output File
   const outputFilename = `results-${jobId}.csv`;
-  const outputPath = path.join(__dirname, 'temp', outputFilename);
-  
-  // Ensure temp folder exists
-  if (!fs.existsSync(path.join(__dirname, 'temp'))) {
-    fs.mkdirSync(path.join(__dirname, 'temp'));
+  // Ensure the temp directory exists
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir);
   }
+  const outputPath = path.join(tempDir, outputFilename);
 
   const csvStream = format({ headers: true });
   const writeStream = fs.createWriteStream(outputPath);
@@ -78,9 +77,10 @@ async function processCsvJob(jobId, filePath) {
 
         let status = 'Invalid';
         
+        // --- UPDATED VALIDATION LOGIC FOR CLOUD ---
+        // We use pure syntax validation here. 
+        // This runs locally on the server and does NOT require Port 25.
         if (email && emailValidator.validate(email)) {
-             // For MVP Cloud deployment, simple syntax check is safest first.
-             // (Deep SMTP checks usually blocked on cloud without paid proxies)
              status = 'Valid'; 
              validCount++;
         } else {
@@ -88,22 +88,22 @@ async function processCsvJob(jobId, filePath) {
              invalidCount++;
         }
 
-        // Add status column
+        // Add status column to the row
         row['Validation Status'] = status;
         
-        // Write to new CSV
+        // Write the row to the new CSV
         csvStream.write(row);
       })
       .on('end', async () => {
         csvStream.end();
-        console.log(`Job ${jobId} finished processing.`);
+        console.log(`Job ${jobId} finished. Valid: ${validCount}, Invalid: ${invalidCount}`);
 
         // 3. Update Firestore with Final Stats & Download URL
         try {
           await db.collection('jobs').doc(jobId).update({
             status: 'completed',
-            processedCount: validCount + invalidCount + riskyCount,
-            totalEmails: validCount + invalidCount + riskyCount,
+            processedCount: validCount + invalidCount,
+            totalEmails: validCount + invalidCount,
             stats: {
               valid: validCount,
               invalid: invalidCount,
@@ -112,7 +112,7 @@ async function processCsvJob(jobId, filePath) {
             downloadUrl: `/api/download/${outputFilename}`
           });
           
-          // Cleanup uploaded raw file (save disk space)
+          // Cleanup the uploaded raw file (save disk space)
           fs.unlink(filePath, (err) => {
             if (err) console.error("Error deleting upload:", err);
           });
