@@ -15,45 +15,40 @@ app.use(cors({ origin: true })); // Allow all origins for MVP
 app.use(express.json());
 
 // --- FIREBASE SETUP (Firestore Only) ---
-// We do NOT need storageBucket here since we are using local disk
-// --- FIREBASE SETUP ---
-// Load the key you just downloaded
-// Load the key you just put in the folder
 // --- FIREBASE SETUP ---
 
 
-// Force absolute path to avoid confusion
-const serviceAccountPath = path.join(__dirname, 'service-key.json');
+let serviceAccount;
 
-console.log("---------------------------------------------------");
-console.log("🔑 Loading Credential from:", serviceAccountPath);
-
-try {
-  const serviceAccount = require(serviceAccountPath);
-
-  // DEBUG CHECK: Does it have a project_id?
-  if (!serviceAccount.project_id) {
-    console.error("❌ ERROR: The loaded JSON file is missing 'project_id'.");
-    console.error("   Did you download an OAuth Client ID instead of a Service Account Key?");
-    console.error("   File contents (first 50 chars):", JSON.stringify(serviceAccount).substring(0, 50) + "...");
-    process.exit(1);
+// OPTION 1: Check if the key is in the Environment (Production/Render)
+if (process.env.FIREBASE_SERVICE_KEY) {
+  try {
+    // Parse the string back into an object
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_KEY);
+    console.log("✅ Loaded Firebase key from Environment Variable");
+  } catch (err) {
+    console.error("❌ Failed to parse FIREBASE_SERVICE_KEY:", err);
   }
-
-  console.log("✅ JSON Valid. Project ID:", serviceAccount.project_id);
-
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    console.log("🔥 Firebase Initialized Successfully!");
+} 
+// OPTION 2: Fallback to local file (Development)
+else {
+  const serviceAccountPath = path.join(__dirname, 'service-key.json');
+  try {
+    serviceAccount = require(serviceAccountPath);
+    console.log("✅ Loaded Firebase key from local file");
+  } catch (err) {
+    console.error("❌ Could not find service-key.json OR env var.");
   }
-
-} catch (error) {
-  console.error("❌ FATAL ERROR: Could not load 'service-key.json'");
-  console.error("   Make sure the file exists and is valid JSON.");
-  console.error("   Error details:", error.message);
-  process.exit(1);
 }
+
+// Initialize
+if (!admin.apps.length && serviceAccount) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
+
+
 console.log("---------------------------------------------------");
 
 const db = admin.firestore();
