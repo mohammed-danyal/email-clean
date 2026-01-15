@@ -1,0 +1,25 @@
+# --- Dependencies ---
+node_modules/
+*/node_modules/
+
+# --- Security & Secrets (CRITICAL) ---
+.env
+service-key.json
+service-account.json
+*.pem
+.DS_Store
+
+# --- Backend Temporary Files ---
+# Ignore the folder where users upload raw files
+uploads/
+# Ignore the folder where we save clean files
+temp/
+# Ignore logs
+logs/
+*.log
+npm-debug.log*
+
+# --- Frontend Build Output ---
+# Ignore the production build folder (Vercel builds this itself)
+dist/
+build/

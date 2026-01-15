@@ -1,0 +1,6 @@
+# Default behavior for most files
+* text=auto
+
+# FORCE these files to always keep Linux line endings (LF)
+# This prevents the "render-build.sh" script from breaking on the server
+*.sh text eol=lf
